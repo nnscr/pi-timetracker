@@ -1,0 +1,2 @@
+class WebserviceError(Exception):
+    pass
