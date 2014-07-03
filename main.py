@@ -1,3 +1,4 @@
+#!/usr/bin/python
 import atexit
 from math import floor
 from threading import Thread, Lock, Semaphore, Event
@@ -111,12 +112,16 @@ class PackingTimeTracker(object):
     def timer_thread(self):
         while self.timer_event.wait() or True:
             while self.mode == self.MODE_TRACKING and self.start_time is not None:
-                string = self.format_time(time() - self.start_time)
+                if self.scanner is None:
+                    self.lcd.message("Kein Barcode-\nscanner gefunden")
+                else:
+                    string = self.format_time(time() - self.start_time)
 
-                string = string + (" " * (16 - len(string) - len(self.invoice))) + self.invoice
-                string += "\n" + self.order_info
+                    string = string + (" " * (16 - len(string) - len(self.invoice))) + self.invoice
+                    string += "\n" + self.order_info
 
-                self.lcd.message(string)
+                    self.lcd.message(string)
+
                 self.timer_event.clear()
                 sleep(1)
 
@@ -137,12 +142,12 @@ class PackingTimeTracker(object):
                 elif group == self.EVENT_BUTTON:
                     self.button_pressed(value)
                 elif group == self.EVENT_DEVICE:
-                    self.barcode_scanner_plugged(value)
+                    self.barcode_scanner_plugged()
 
                 self.event_stack.remove(event)
             self.lock.release()
 
-    def barcode_scanner_plugged(self, in_out):
+    def barcode_scanner_plugged(self):
         if self.mode not in (self.MODE_MENU, self.MODE_SELECT_PACKER):
             self.resume()
 
