@@ -26,30 +26,45 @@ class BarcodeScanner(object):
 
     @staticmethod
     def find_scanner():
+        """Get a BarcodeScanner instance or raise a NoDeviceFoundError if no barcode scanner was found."""
+        scanner = BarcodeScanner.get_scanner()
+
+        if scanner:
+            return scanner
+
+        raise NoDeviceFoundError
+
+    @staticmethod
+    def get_scanner():
+        """Get a BarcodeScanner instance or return None if no barcode scanner was found."""
         devices = map(InputDevice, list_devices())
 
         for dev in devices:
             if ecodes.EV_KEY in dev.capabilities():
                 return BarcodeScanner(dev.fn)
 
-        raise NoDeviceFoundError
+        return None
 
     def read(self):
-        for event in self.dev.read_loop():
-            kevent = KeyEvent(event)
-            if event.type == ecodes.EV_KEY and kevent.keystate == kevent.key_up:
-                if event.code == ecodes.KEY_ENTER:
-                    barcode = self.buffer
-                    self.buffer = list()
+        try:
+            for event in self.dev.read_loop():
+                kevent = KeyEvent(event)
+                if event.type == ecodes.EV_KEY and kevent.keystate == kevent.key_up:
+                    if event.code == ecodes.KEY_ENTER:
+                        barcode = self.buffer
+                        self.buffer = list()
 
-                    return "".join(barcode)
+                        return "".join(barcode)
 
-                else:
-                    try:
-                        self.buffer.append(self.scancodes[event.code])
+                    else:
+                        try:
+                            self.buffer.append(self.scancodes[event.code])
 
-                    except KeyError:
-                        print(categorize(event))
+                        except KeyError:
+                            print(categorize(event))
+        except IOError, e:
+            if e.errno == 19:
+                raise NoDeviceFoundError
 
 
 if __name__ == "__main__":

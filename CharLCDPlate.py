@@ -19,8 +19,10 @@ class CharLCDPlate(Adafruit_CharLCDPlate):
                     self.previous_button = button
                     return button
 
-    def message(self, text):
-        self.clear()
+    def message(self, text, clear=True):
+        if clear:
+            self.clear()
+
         Adafruit_CharLCDPlate.message(self, text)
 
 
@@ -29,6 +31,7 @@ class Menu(object):
         self.lcd = lcd
         self.cursor = None
         self.options = None
+        self.callback = None
 
     def show(self, options):
         self.options = options
@@ -41,6 +44,7 @@ class Menu(object):
 
     def button_pressed(self, button):
         if button == self.lcd.UP:
+            # Move cursor up
             if self.cursor == 0:
                 self.cursor = len(self.options)
 
@@ -48,11 +52,20 @@ class Menu(object):
             self.draw()
 
         elif button == self.lcd.DOWN:
+            # Move cursor down
             if self.cursor == len(self.options) - 1:
                 self.cursor = 0
             else:
                 self.cursor += 1
             self.draw()
+
+        elif button in (self.lcd.RIGHT, self.lcd.SELECT):
+            # Select option
+            self.callback(self.options[self.cursor][0])
+
+        elif button == self.lcd.LEFT:
+            # Cancel
+            self.callback(None)
 
 
 class NumberSelector(object):
@@ -76,7 +89,10 @@ class NumberSelector(object):
                 self.position -= 1
             self.flash()
         elif button == self.lcd.SELECT:
-            self.callback(self.current)
+            value = self.current
+            self.position = 1
+            self.current = 0
+            self.callback(value)
         elif button == self.lcd.UP:
             line = list("%016d" % self.current)
             digit = int(line[-self.position])
