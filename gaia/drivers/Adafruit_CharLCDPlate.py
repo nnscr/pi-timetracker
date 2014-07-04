@@ -8,8 +8,10 @@
 # lrvic - https://github.com/lrvick/raspi-hd44780/blob/master/hd44780.py
 # LiquidCrystal - https://github.com/arduino/Arduino/blob/master/libraries/LiquidCrystal/LiquidCrystal.cpp
 
-from Adafruit_I2C import Adafruit_I2C
 from time import sleep
+
+from gaia.drivers.Adafruit_I2C import Adafruit_I2C
+
 
 class Adafruit_CharLCDPlate(Adafruit_I2C):
 

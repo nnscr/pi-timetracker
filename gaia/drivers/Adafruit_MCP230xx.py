@@ -20,9 +20,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from Adafruit_I2C import Adafruit_I2C
-import smbus
 import time
+
+from gaia.drivers.Adafruit_I2C import Adafruit_I2C
+
 
 MCP23017_IODIRA = 0x00
 MCP23017_IODIRB = 0x01
@@ -35,6 +36,7 @@ MCP23017_OLATB  = 0x15
 MCP23008_GPIOA  = 0x09
 MCP23008_GPPUA  = 0x06
 MCP23008_OLATA  = 0x0A
+
 
 class Adafruit_MCP230XX(object):
     OUTPUT = 0

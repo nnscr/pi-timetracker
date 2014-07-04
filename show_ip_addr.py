@@ -1,7 +1,9 @@
 import socket
 import fcntl
 import struct
-from CharLCDPlate import CharLCDPlate
+
+from gaia.drivers import CharLCDPlate
+
 
 SIOCGIFADDR = 0x8915
 

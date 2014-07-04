@@ -2,12 +2,14 @@
 from math import floor
 from threading import Thread, Lock, Semaphore, Event, current_thread
 from time import time
-from CharLCDPlate import NumberSelector, CharLCDPlate, Menu
+from time import sleep
+from os import system
+
+from gaia.drivers.CharLCDPlate import NumberSelector, Menu
+from gaia.drivers import CharLCDPlate
 from gaia.webservice.Webservice import Webservice
 from gaia.webservice.Settings import Settings
-from time import sleep
-from barcode_scanner import BarcodeScanner, NoDeviceFoundError
-from os import system
+from gaia.drivers.barcode_scanner import BarcodeScanner, NoDeviceFoundError
 from show_ip_addr import get_ip_addr
 
 # Threads:
@@ -26,11 +28,6 @@ class PackingTimeTracker(object):
         "Order not found.": "Bestellung\nnicht gefunden",
         "Failed to get order.": "Abruf\nfehlgeschlagen",
     }
-
-    EVENT_BARCODE = 1
-    EVENT_BUTTON = 2
-    EVENT_DEVICE = 3
-    EVENT_QUIT = 4
 
     def __init__(self, settings, lcd):
         self.settings = settings
@@ -147,7 +144,7 @@ class PackingTimeTracker(object):
             has_events = self.semaphore.acquire(blocking=0)
 
             if not has_events:
-                sleep(0.1)
+                sleep(1 / 50)
 
             else:
                 self.lock.acquire()

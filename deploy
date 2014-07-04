@@ -1,2 +1,2 @@
 #!/bin/bash
-scp -r /home/philipp/code/gaia-pi-client root@192.168.0.252:/root
+rsync -azrvl --exclude '.git' --exclude '.idea' /home/philipp/code/gaia-pi-client root@192.168.0.252:/root

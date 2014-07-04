@@ -1,4 +1,5 @@
 from evdev import InputDevice, list_devices, ecodes, KeyEvent, categorize
+from time import sleep
 
 
 class NoDeviceFoundError(Exception):
@@ -45,23 +46,31 @@ class BarcodeScanner(object):
 
         return None
 
-    def read(self):
+    def read(self, lock=None):
         try:
-            for event in self.dev.read_loop():
-                kevent = KeyEvent(event)
-                if event.type == ecodes.EV_KEY and kevent.keystate == kevent.key_up:
-                    if event.code == ecodes.KEY_ENTER:
-                        barcode = self.buffer
-                        self.buffer = list()
+            while lock is None or not lock.isSet():
+                event = self.dev.read_one()
 
-                        return "".join(barcode)
+                if event is None:
+                    sleep(1 / 50)
 
-                    else:
-                        try:
-                            self.buffer.append(self.scancodes[event.code])
+                else:
+                    kevent = KeyEvent(event)
+                    if event.type == ecodes.EV_KEY and kevent.keystate == kevent.key_up:
+                        if event.code == ecodes.KEY_ENTER:
+                            barcode = self.buffer
+                            self.buffer = list()
 
-                        except KeyError:
-                            print(categorize(event))
+                            return "".join(barcode)
+
+                        else:
+                            try:
+                                self.buffer.append(self.scancodes[event.code])
+
+                            except KeyError:
+                                print(categorize(event))
+            return None
+
         except IOError, e:
             if e.errno == 19:
                 raise NoDeviceFoundError

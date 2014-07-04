@@ -1,5 +1,7 @@
-from Adafruit_CharLCDPlate import Adafruit_CharLCDPlate
 from time import sleep
+
+from gaia.drivers.Adafruit_CharLCDPlate import Adafruit_CharLCDPlate
+
 
 __author__ = 'philipp'
 
@@ -27,10 +29,10 @@ class CharLCDPlate(Adafruit_CharLCDPlate):
         Adafruit_CharLCDPlate.message(self, text)
 
 
-class Menu(object):
+class MenuBuilder(object):
     def __init__(self, lcd):
         self.lcd = lcd
-        self.cursor = None
+        self.cursor = 0
         self.options = None
         self.callback = None
 

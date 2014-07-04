@@ -1,10 +1,13 @@
 #!/usr/bin/python
 # coding=utf-8
-from CharLCDPlate import NumberSelector, CharLCDPlate
+from time import sleep
+
+from gaia.drivers.CharLCDPlate import NumberSelector
+from gaia.drivers import CharLCDPlate
 from gaia.webservice.Webservice import Webservice
 from gaia.webservice.Settings import Settings
-from time import sleep
-from barcode_scanner import BarcodeScanner
+from gaia.drivers.barcode_scanner import BarcodeScanner
+
 
 
 # Configuration
