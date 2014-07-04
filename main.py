@@ -1,7 +1,6 @@
 #!/usr/bin/python
-import atexit
 from math import floor
-from threading import Thread, Lock, Semaphore, Event
+from threading import Thread, Lock, Semaphore, Event, current_thread
 from time import time
 from CharLCDPlate import NumberSelector, CharLCDPlate, Menu
 from gaia.webservice.Webservice import Webservice
@@ -31,6 +30,7 @@ class PackingTimeTracker(object):
     EVENT_BARCODE = 1
     EVENT_BUTTON = 2
     EVENT_DEVICE = 3
+    EVENT_QUIT = 4
 
     def __init__(self, settings, lcd):
         self.settings = settings
@@ -59,6 +59,7 @@ class PackingTimeTracker(object):
         self.lock = Lock()
         self.semaphore = Semaphore()
         self.timer_event = Event()
+        self.quit_event = Event()
 
         self.event_stack = list()
 
@@ -72,7 +73,7 @@ class PackingTimeTracker(object):
         self.previous_mode_menu = None
 
     def scanner_thread(self):
-        while True:
+        while not self.quit_event.isSet():
             try:
                 barcode = self.scanner.read()
 
@@ -86,6 +87,8 @@ class PackingTimeTracker(object):
 
                 # Let this thread search for a barcode scanner
                 self.search_scanner()
+
+        print("Quitting scanner thread")
 
     def add_event(self, event):
         self.lock.acquire()
@@ -101,16 +104,24 @@ class PackingTimeTracker(object):
             sleep(1)
             self.scanner = BarcodeScanner.get_scanner()
 
+            if self.quit_event.isSet():
+                return
+
         self.add_event((self.EVENT_DEVICE, "plugged_in"))
 
     def buttons_thread(self):
-        while True:
+        while not self.quit_event.isSet():
             button = self.lcd.read_buttons()
 
-            self.add_event((self.EVENT_BUTTON, button))
+            if button is not None:
+                self.add_event((self.EVENT_BUTTON, button))
+
+            sleep(0.1)
+
+        print("Quitting buttons thread")
 
     def timer_thread(self):
-        while self.timer_event.wait() or True:
+        while self.timer_event.wait() and not self.quit_event.isSet():
             while self.mode == self.MODE_TRACKING and self.start_time is not None:
                 if self.scanner is None:
                     self.lcd.message("Kein Barcode-\nscanner gefunden")
@@ -124,28 +135,38 @@ class PackingTimeTracker(object):
 
                 self.timer_event.clear()
                 sleep(1)
+        print("Quitting timer thread")
 
     def start(self):
         self.scanner_thread.start()
         self.buttons_thread.start()
         self.timer_thread.start()
 
-        while self.semaphore.acquire():
-            self.lock.acquire()
-            for event in self.event_stack:
-                group, value = event
+        print("Entering main loop")
+        while True:
+            has_events = self.semaphore.acquire(blocking=0)
 
-                print("Event %02d: %s" % (group, value))
+            if not has_events:
+                sleep(0.1)
 
-                if group == self.EVENT_BARCODE:
-                    self.barcode_entered(value)
-                elif group == self.EVENT_BUTTON:
-                    self.button_pressed(value)
-                elif group == self.EVENT_DEVICE:
-                    self.barcode_scanner_plugged()
+            else:
+                self.lock.acquire()
+                for event in self.event_stack:
+                    group, value = event
 
-                self.event_stack.remove(event)
-            self.lock.release()
+                    print("Event %02d: %s" % (group, value))
+
+                    if group == self.EVENT_BARCODE:
+                        self.barcode_entered(value)
+                    elif group == self.EVENT_BUTTON:
+                        self.button_pressed(value)
+                    elif group == self.EVENT_DEVICE:
+                        self.barcode_scanner_plugged()
+                    elif group == self.EVENT_QUIT:
+                        self.quit()
+
+                    self.event_stack.remove(event)
+                self.lock.release()
 
     def barcode_scanner_plugged(self):
         if self.mode not in (self.MODE_MENU, self.MODE_SELECT_PACKER):
@@ -287,11 +308,18 @@ class PackingTimeTracker(object):
             self.sel.show(self.sel.prompt)
 
     def quit(self, restart=False):
+        print("Quitting %s" % current_thread().name)
+        self.quit_event.set()
+        self.timer_event.set()
+        self.buttons_thread.join()
+        self.scanner_thread.join()
+        self.timer_thread.join()
+
         if restart:
             exit(200)
         else:
-            self.lcd.message("Auf\nWiedersehen!")
-            sleep(2)
+            self.lcd.clear()
+            self.lcd.backlight(lcd.OFF)
             exit()
 
     def shutdown(self):
@@ -326,11 +354,18 @@ if __name__ == "__main__":
     lcd = CharLCDPlate()
     lcd.begin(16, 2)
 
+    def on_exit(tracker):
+        def signal_handler(signum, frame):
+            print("Caught signal %d" % signum)
+            tracker.add_event((tracker.EVENT_QUIT, signum))
+        return signal_handler
+
     try:
         settings = Settings()
         tracker = PackingTimeTracker(settings, lcd)
 
-        atexit.register(lcd.message, "Programm\nbeendet")
+        import signal
+        signal.signal(signal.SIGTERM, on_exit(tracker))
 
         tracker.select_packer()
         tracker.start()

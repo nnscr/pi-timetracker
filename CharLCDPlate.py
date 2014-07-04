@@ -10,14 +10,15 @@ class CharLCDPlate(Adafruit_CharLCDPlate):
         self.previous_button = None
 
     def read_buttons(self):
-        while True:
-            if self.previous_button is not None and not self.buttonPressed(self.previous_button):
-                self.previous_button = None
+        if self.previous_button is not None and not self.buttonPressed(self.previous_button):
+            self.previous_button = None
 
-            for button in (self.LEFT, self.UP, self.RIGHT, self.DOWN, self.SELECT):
-                if self.buttonPressed(button) and button is not self.previous_button:
-                    self.previous_button = button
-                    return button
+        for button in (self.LEFT, self.UP, self.RIGHT, self.DOWN, self.SELECT):
+            if self.buttonPressed(button) and button is not self.previous_button:
+                self.previous_button = button
+                return button
+
+        return None
 
     def message(self, text, clear=True):
         if clear:
