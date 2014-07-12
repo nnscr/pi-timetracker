@@ -25,7 +25,9 @@ if __name__ == "__main__":
     ws.username = settings.get("username")
     ws.password = settings.get("password")
 
-    director = Director(ws, settings.get("terminal"), lcd)
+    director = Director(ws, lcd)
+    director.terminal = settings.get("terminal")
+    director.machine = settings.get("machine")
 
     import signal
     signal.signal(signal.SIGTERM, on_exit(director))

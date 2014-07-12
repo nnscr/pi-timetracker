@@ -31,8 +31,11 @@ class Webservice(object):
 
         response = requests.post(url, data={"payload": json.dumps(parameters)})
 
+        print("Request: %s" % json.dumps(parameters))
+
         try:
             payload = response.json()
+            print("Response: %s" % payload)
         except ValueError:
             print(response.text)
             raise

@@ -8,11 +8,10 @@ from gaia.packingtracker.mode import SelectPacker
 
 
 class Director(AppState):
-    def __init__(self, webservice, terminal, lcd):
+    def __init__(self, webservice, lcd):
         AppState.__init__(self, lcd)
 
         self.webservice = webservice
-        self.terminal = terminal
 
         # Children threads
         self.network_thread = thread.NetworkThread(self, self.webservice)
@@ -81,7 +80,9 @@ class Director(AppState):
                 if event == AppState.EVENT_NETWORK:
                     # A network response has arrived
                     callback, response = value
-                    callback(response)
+
+                    if callback is not None:
+                        callback(response)
 
                 # Inform the current mode about the event
                 self.mode.handle_event(event, value)

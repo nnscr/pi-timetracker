@@ -43,6 +43,7 @@ class AppState(Queue):
 
         # Is a barcode scanner connected?
         self.has_scanner = False
+        self.breakdown = False
 
         # Info about current packer
         self.packer_id = None
@@ -54,6 +55,10 @@ class AppState(Queue):
         # Timer event
         self.timer_event = Event()
         self.timer_running = False
+
+        # Static values from configuration file
+        self.terminal = None
+        self.machine = None
 
     def start_timer(self):
         self.timer_running = True
@@ -85,4 +90,3 @@ class AppState(Queue):
     def set_packer(self, packer_id, packer_name):
         self.packer_id = packer_id
         self.packer_name = packer_name
-

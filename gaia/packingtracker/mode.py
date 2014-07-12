@@ -44,7 +44,10 @@ class SelectPacker(Mode):
         return WaitInvoice(self.app_state)
 
     def callback(self, num):
-        self.app_state.call_ws_async(self.network_callback, "Packaging", "loginPacker", {"packerId": num})
+        self.app_state.call_ws_async(self.network_callback, "Packaging", "loginPacker", {
+            "packer": num,
+            "machine": self.app_state.machine
+        })
         self.is_connecting = True
         self.draw()
 
@@ -76,14 +79,36 @@ class WaitInvoice(Mode):
         Mode.__init__(self, app_state)
 
         self.is_connecting = False
+        self.scroll_text_position = 0
 
     def draw(self):
+        messages = list()
+
         if self.is_connecting:
-            self.lcd.message("Verbinde...")
-        elif not self.app_state.has_scanner:
-            self.lcd.message("Kein Barcode-\nscanner gefunden")
+            messages.append("Verbinde...")
+
+        if not self.app_state.has_scanner:
+            messages.append("Kein Barcode-\nscanner gefunden")
+
         else:
-            self.lcd.message("Lieferschein\nscannen")
+            messages.append("Lieferschein\nscannen")
+
+        if self.app_state.breakdown:
+            messages.append("Ausfall\ngemeldet")
+
+        # If there is more than one message, start the timer
+        if len(messages) > 1:
+            self.app_state.start_timer()
+        else:
+            self.app_state.stop_timer()
+
+        # Scroll through the messages
+        if self.scroll_text_position >= len(messages) - 1:
+            self.scroll_text_position = 0
+        else:
+            self.scroll_text_position += 1
+
+        self.lcd.message(messages[self.scroll_text_position])
 
     def handle_event(self, event, value):
         if event == AppState.EVENT_DEVICE:
@@ -91,7 +116,10 @@ class WaitInvoice(Mode):
 
         elif event == AppState.EVENT_BARCODE:
             invoice = self.parse_invoice_barcode(value)
-            self.app_state.call_ws_async(self.network_callback, "Packaging", "getOrderInfo", {"orderId": invoice})
+            self.app_state.call_ws_async(self.network_callback, "Packaging", "startTracking", {
+                "order": invoice,
+                "machine": self.app_state.machine
+            })
             self.is_connecting = True
             self.draw()
 
@@ -166,9 +194,10 @@ class Tracking(Mode):
     def barcode_entered(self, value):
         pack_time = int(time() - self.start_time)
         self.app_state.call_ws_async(self.network_callback, "Packaging", "finishParcel", {
-            "orderId": self.invoice,
+            "order": self.invoice,
             "packTime": pack_time,
-            "packerId": self.app_state.packer_id,
+            "packer": self.app_state.packer_id,
+            "machine": self.app_state.machine,
         })
 
     def network_callback(self, response):
@@ -186,13 +215,21 @@ class Menu(Mode):
 
         self.menu_builder = MenuBuilder(self.lcd)
         self.menu_builder.callback = self.callback
-        self.menu_builder.options = [
-            ("logout", "Abmelden"),
-            ("abort", "Paket\nabbrechen"),
-            ("quit", "Beenden"),
-            ("shutdown", "Herunterfahren"),
-            ("show_ip", "IP-Adresse\nanzeigen"),
-        ]
+        self.menu_builder.options = list()
+        self.menu_builder.options.append(("logout", "Abmelden"))
+
+        if isinstance(self.previous_mode, Tracking):
+            self.menu_builder.options.append(("abort", "Paket\nabbrechen"))
+
+        if self.app_state.machine is not None:
+            if self.app_state.breakdown:
+                self.menu_builder.options.append(("repaired", "Ausfall\nbehoben"))
+            else:
+                self.menu_builder.options.append(("breakdown", "Ausfall\nmelden"))
+
+        self.menu_builder.options.append(("quit", "Beenden"))
+        self.menu_builder.options.append(("shutdown", "Herunterfahren"))
+        self.menu_builder.options.append(("show_ip", "IP-Adresse\nanzeigen"))
 
     def callback(self, option):
         if option == "show_ip":
@@ -208,6 +245,11 @@ class Menu(Mode):
             return self.previous_mode
 
         if option == "logout":
+            self.app_state.call_ws_async(None, "Packaging", "logoutPacker", {
+                "packer": self.app_state.packer_id,
+                "machine": self.app_state.machine,
+            })
+
             return SelectPacker(self.app_state)
 
         if option == "quit":
@@ -220,6 +262,16 @@ class Menu(Mode):
         if option == "shutdown":
             self.app_state.shutdown_system()
             return
+
+        if option == "breakdown":
+            self.app_state.call_ws_async(None, "Packaging", "reportBreakdown", {"machine": self.app_state.machine})
+            self.app_state.breakdown = True
+            return self.previous_mode
+
+        if option == "repaired":
+            self.app_state.call_ws_async(None, "Packaging", "repairedMachine", {"machine": self.app_state.machine})
+            self.app_state.breakdown = False
+            return self.previous_mode
 
     def draw(self):
         self.menu_builder.draw()
