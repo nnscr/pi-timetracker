@@ -16,7 +16,7 @@ class Settings(object):
 
         self.read()
 
-        for key in ("url", "username", "password"):
+        for key in ("server", "username", "password"):
             if not key in self._config:
                 raise WebserviceError("Missing required option %s." % key)
 

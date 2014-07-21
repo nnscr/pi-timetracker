@@ -31,6 +31,8 @@ class AppState(Queue):
     EVENT_NETWORK = "EVENT_NETWORK"  # A network response has arrived
     EVENT_FINISH = "EVENT_FINISH"  # A mode has finished
     EVENT_REFRESH = "EVENT_REFRESH"  # Redraw the displays
+    EVENT_AUTH = "EVENT_AUTH"  # Websocket authentication happened
+    EVENT_WS_EVENT = "EVENT_WS_EVENT"  # Websocket event arrived
 
     DEVICE_OUT = "DEVICE_OUT"
     DEVICE_IN = "DEVICE_IN"
@@ -85,6 +87,7 @@ class AppState(Queue):
 
     def shutdown(self):
         self.quit_event.set()
+        # Unlock the timer thread
         self.start_timer()
 
     def set_packer(self, packer_id, packer_name):

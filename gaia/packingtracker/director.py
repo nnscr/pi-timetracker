@@ -84,6 +84,29 @@ class Director(AppState):
                     if callback is not None:
                         callback(response)
 
+                if event == AppState.EVENT_AUTH:
+                    success, user = value
+
+                    if not success:
+                        # Authentication failed, maybe the token has expired.
+                        # Try to login with user credentials.
+
+                        self.webservice.login()
+                    else:
+                        self.webservice.token = value[1]["token"]
+                        self.webservice.subscribe("machine")
+
+                if event == AppState.EVENT_WS_EVENT:
+                    channel, ev, data = value
+
+                    if channel == "machine" and ev == "broken" and data["machine_name"] == self.machine:
+                        self.breakdown = True
+                        self.mode.draw()
+
+                    elif channel == "machine" and ev == "repaired" and data["machine_name"] == self.machine:
+                        self.breakdown = False
+                        self.mode.draw()
+
                 # Inform the current mode about the event
                 self.mode.handle_event(event, value)
 

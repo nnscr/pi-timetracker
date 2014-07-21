@@ -1,10 +1,10 @@
 from gaia.drivers.CharLCDPlate import CharLCDPlate
 from Queue import Queue, Empty
 from gaia.packingtracker.common import AppState
-from gaia.webservice.Webservice import Webservice
 from time import sleep
 from gaia.drivers.barcode_scanner import BarcodeScanner, NoDeviceFoundError
 from threading import Thread
+from gaia.websocket.Websocket import Websocket
 
 
 class ButtonsThread(Thread):
@@ -31,27 +31,51 @@ class ButtonsThread(Thread):
 class NetworkThread(Thread):
     def __init__(self, app_state, ws):
         assert isinstance(app_state, AppState)
-        assert isinstance(ws, Webservice)
+        assert isinstance(ws, Websocket)
 
         Thread.__init__(self, name="network_thread")
         self.ws = ws
         self.app_state = app_state
         self.request_queue = Queue()
+        self.pending_requests = dict()
 
     def call_async(self, callback, extension, procedure, parameters):
+        print("Adding new network request to stack")
         self.request_queue.put((callback, extension, procedure, parameters))
 
     def run(self):
         while self.app_state.is_active():
+            # Look if there are new calls to send
             try:
                 callback, extension, procedure, parameters = self.request_queue.get(block=False)
 
-                response = self.ws.call(extension, procedure, parameters)
+                print("Sending new request")
 
-                self.app_state.put((AppState.EVENT_NETWORK, (callback, response)))
+                msgid = self.ws.call(extension, procedure, parameters)
+                self.pending_requests[msgid] = callback
 
             except Empty:
-                sleep(0.1)
+                pass
+
+            # Look if there are new responses
+            res = self.ws.wait_response()
+
+            if res:
+                print("There!", res)
+                code, payload, msgid = res
+
+                if msgid is None:
+                    if code == 12:
+                        self.app_state.add_event(AppState.EVENT_WS_EVENT, payload)
+
+                elif msgid in ("auth", "login"):
+                    self.app_state.add_event(AppState.EVENT_AUTH, payload)
+
+                else:
+                    callback = self.pending_requests.pop(msgid)
+                    self.app_state.add_event(AppState.EVENT_NETWORK, (callback, payload))
+
+            sleep(0.1)
 
         print("Quitting network thread")
 

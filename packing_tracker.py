@@ -3,7 +3,7 @@ from gaia.drivers.CharLCDPlate import CharLCDPlate
 from gaia.packingtracker.common import AppState
 from gaia.packingtracker.director import Director
 from gaia.webservice.Settings import Settings
-from gaia.webservice.Webservice import Webservice
+from gaia.websocket.Websocket import Websocket
 
 if __name__ == "__main__":
     def on_exit(director):
@@ -20,10 +20,12 @@ if __name__ == "__main__":
 
     settings = Settings()
 
-    ws = Webservice(settings.get("url"))
+    ws = Websocket((settings.get("server"), 7191))
     ws.token = settings.get("token")
     ws.username = settings.get("username")
     ws.password = settings.get("password")
+    ws.connect()
+    ws.auth()
 
     director = Director(ws, lcd)
     director.terminal = settings.get("terminal")

@@ -63,6 +63,7 @@ class SelectPacker(Mode):
 
         if result["_success"]:
             self.app_state.set_packer(result["packer_id"], result["name"])
+            self.app_state.breakdown = result["broken"]
 
             self.lcd.message("Hallo,\n%s!" % result["name"].encode("ascii", "replace"))
             sleep(1)
@@ -169,7 +170,10 @@ class Tracking(Mode):
         # Let this be refreshed automatically
         self.app_state.start_timer()
 
-        warning = "SC" if not self.app_state.has_scanner else ""
+        warning = ""
+
+        warning += "S" if not self.app_state.has_scanner else " "
+        warning += "A" if self.app_state.breakdown else " "
 
         line1 = "{:<6}{:^4}{:>6}".format(self.get_time(), warning, self.invoice)
         line2 = self.order_info
@@ -198,7 +202,7 @@ class Tracking(Mode):
             "packTime": pack_time,
             "packer": self.app_state.packer_id,
             "machine": self.app_state.machine,
-        })
+            })
 
     def network_callback(self, response):
         self.finished(response)
