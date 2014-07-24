@@ -1,5 +1,7 @@
 from _socket import error
 import base64
+import os
+from select import select
 import socket
 import random
 import json
@@ -89,6 +91,8 @@ class Websocket:
         self.message_id = 0
 
         self.inc = IncomingResponse()
+
+        self.pipe = os.pipe()
 
     @staticmethod
     def gen_nonce():
@@ -201,18 +205,23 @@ class Websocket:
     def subscribe(self, channel):
         self.send([3, channel, None])
 
+    def interrupt(self):
+        os.write(self.pipe[1], "interrupt")
+
     def wait_response(self):
         sel = [self.socket]
-        while True:
-            #read, write, err = select(sel, sel, sel)
 
-            #for sock in read:
-            try:
-                data = self.socket.recv(1)
+        read, write, err = select(sel + [self.pipe[0]], sel, sel)
 
-                response = self.inc.received_byte(ord(data))
+        for sock in read:
+            while True:
+                try:
+                    data = sock.recv(1)
 
-                if response:
-                    return response
-            except error:
-                return None
+                    response = self.inc.received_byte(ord(data))
+
+                    if response:
+                        return response
+
+                except (error, AttributeError):
+                    break

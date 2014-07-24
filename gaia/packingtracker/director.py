@@ -4,7 +4,7 @@ from os import system
 from time import sleep
 from gaia.packingtracker.common import AppState, ANSI
 from gaia.packingtracker import thread
-from gaia.packingtracker.mode import SelectPacker
+from gaia.packingtracker.mode import SelectPacker, Tracking
 
 
 class Director(AppState):
@@ -27,14 +27,22 @@ class Director(AppState):
         # Current mode
         self.mode = None
 
+    def is_tracking(self):
+        return isinstance(self.mode, Tracking)
+
     def switch_mode(self, new_mode):
         print("Switching mode from %s to %s." % (
             ANSI.color(ANSI.FG + ANSI.COL_YELLOW, type(self.mode).__name__),
             ANSI.color(ANSI.FG + ANSI.COL_GREEN, type(new_mode).__name__)
         ))
 
-        self.stop_timer()
+        old_mode = self.mode
+
+        if old_mode is not None:
+            old_mode.on_exit(new_mode)
+
         self.mode = new_mode
+        self.mode.on_enter(old_mode)
         self.mode.draw()
 
     def start(self):
@@ -64,6 +72,11 @@ class Director(AppState):
                         self.switch_mode(new_mode)
 
                     continue
+
+                if event == AppState.EVENT_TICK:
+                    self.webservice.interrupt()
+                    self.leds.refresh()
+                    self.mode.on_tick()
 
                 if event == AppState.EVENT_REFRESH:
                     # A display refresh is requested
@@ -119,6 +132,7 @@ class Director(AppState):
 
         print("Quitting %s" % current_thread().name)
 
+        self.webservice.interrupt()
         self.shutdown()
 
         self.buttons_thread.join()

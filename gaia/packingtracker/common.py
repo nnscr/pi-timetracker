@@ -1,5 +1,6 @@
 from Queue import Queue
 from threading import Event
+from RPi import GPIO
 
 
 class ANSI():
@@ -31,11 +32,16 @@ class AppState(Queue):
     EVENT_NETWORK = "EVENT_NETWORK"  # A network response has arrived
     EVENT_FINISH = "EVENT_FINISH"  # A mode has finished
     EVENT_REFRESH = "EVENT_REFRESH"  # Redraw the displays
+    EVENT_TICK = "EVENT_TICK"  # Timer tick
     EVENT_AUTH = "EVENT_AUTH"  # Websocket authentication happened
     EVENT_WS_EVENT = "EVENT_WS_EVENT"  # Websocket event arrived
 
     DEVICE_OUT = "DEVICE_OUT"
     DEVICE_IN = "DEVICE_IN"
+
+    LED_RED = 0
+    LED_YLW = 1
+    LED_GRN = 2
 
     def __init__(self, lcd):
         Queue.__init__(self)
@@ -54,24 +60,16 @@ class AppState(Queue):
         # Devices
         self.lcd = lcd
 
-        # Timer event
-        self.timer_event = Event()
-        self.timer_running = False
-
         # Static values from configuration file
         self.terminal = None
         self.machine = None
 
-    def start_timer(self):
-        self.timer_running = True
-        self.timer_event.set()
-
-    def stop_timer(self):
-        self.timer_event.clear()
-        self.timer_running = False
-
-    def wait_timer(self):
-        self.timer_event.wait()
+        # Current LED states for flashing
+        self.leds = LEDManager(leds=(
+            LED(11, PowerLEDBehaviour(self)),
+            LED(13, MaintenanceLEDBehaviour(self)),
+            LED(15, TrackingLEDBehaviour(self))
+        ))
 
     def add_event(self, event, value=None):
         self.put((event, value))
@@ -87,9 +85,84 @@ class AppState(Queue):
 
     def shutdown(self):
         self.quit_event.set()
-        # Unlock the timer thread
-        self.start_timer()
 
     def set_packer(self, packer_id, packer_name):
         self.packer_id = packer_id
         self.packer_name = packer_name
+
+    def is_tracking(self):
+        pass
+
+
+class LED(object):
+    OFF = 0
+    ON = 1
+    FLASH = 2
+
+    current = False
+    mode = OFF
+
+    def __init__(self, pin, behaviour):
+        self.pin = pin
+        self.behaviour = behaviour
+
+    def refresh(self):
+        self.mode = self.behaviour.get_mode()
+
+        if self.mode == self.FLASH:
+            self.current = not self.current
+        else:
+            self.current = self.mode
+
+        self._set_level(self.current)
+
+    def _set_level(self, level):
+        GPIO.output(self.pin, level)
+
+
+class LEDManager(object):
+    def __init__(self, leds):
+        self.leds = leds
+
+        # Init GPIO for status leds
+        GPIO.setmode(GPIO.BOARD)
+        GPIO.setwarnings(False)
+
+        for led in self.leds:
+            GPIO.setup(led.pin, GPIO.OUT)
+
+    def refresh(self):
+        for led in self.leds:
+            led.refresh()
+
+
+class LEDBehaviour(object):
+    def __init__(self, app_state):
+        self.app = app_state
+
+    def get_mode(self):
+        pass
+
+
+class PowerLEDBehaviour(LEDBehaviour):
+    def get_mode(self):
+        return LED.ON
+
+
+class MaintenanceLEDBehaviour(LEDBehaviour):
+    def get_mode(self):
+        if self.app.breakdown:
+            return LED.ON
+        else:
+            return LED.OFF
+
+
+class TrackingLEDBehaviour(LEDBehaviour):
+    def get_mode(self):
+        if self.app.is_tracking():
+            if self.app.mode.is_paused:
+                return LED.FLASH
+            else:
+                return LED.ON
+        else:
+            return LED.OFF

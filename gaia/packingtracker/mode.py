@@ -1,7 +1,7 @@
 from gaia.packingtracker.common import AppState
 from show_ip_addr import get_ip_addr
 from math import floor
-from time import time, sleep
+from time import sleep
 from gaia.drivers.CharLCDPlate import NumberSelector, MenuBuilder
 
 
@@ -20,6 +20,18 @@ class Mode(object):
         self.app_state.add_event(AppState.EVENT_FINISH, value)
 
     def finish(self, value):
+        pass
+
+    def on_enter(self, old_mode):
+        pass
+
+    def on_tick(self):
+        pass
+
+    def on_menu_tick(self):
+        pass
+
+    def on_exit(self, new_mode):
         pass
 
 
@@ -81,35 +93,43 @@ class WaitInvoice(Mode):
 
         self.is_connecting = False
         self.scroll_text_position = 0
+        self.messages = list()
+        self.last_count = None
 
-    def draw(self):
-        messages = list()
+        # Prepare this for the first draw
+        self.on_tick()
+
+    def on_tick(self):
+        self.messages = list()
 
         if self.is_connecting:
-            messages.append("Verbinde...")
+            self.messages.append("Verbinde...")
 
         if not self.app_state.has_scanner:
-            messages.append("Kein Barcode-\nscanner gefunden")
+            self.messages.append("Kein Barcode-\nscanner gefunden")
 
         else:
-            messages.append("Lieferschein\nscannen")
+            self.messages.append("Lieferschein\nscannen")
 
         if self.app_state.breakdown:
-            messages.append("Ausfall\ngemeldet")
+            self.messages.append("Ausfall\ngemeldet")
 
-        # If there is more than one message, start the timer
-        if len(messages) > 1:
-            self.app_state.start_timer()
-        else:
-            self.app_state.stop_timer()
+        count = len(self.messages) - 1
 
         # Scroll through the messages
-        if self.scroll_text_position >= len(messages) - 1:
+        if self.scroll_text_position >= count:
             self.scroll_text_position = 0
+
         else:
             self.scroll_text_position += 1
 
-        self.lcd.message(messages[self.scroll_text_position])
+        if len(self.messages) > 1 or self.last_count != count:
+            self.draw()
+
+        self.last_count = count
+
+    def draw(self):
+        self.lcd.message(self.messages[self.scroll_text_position])
 
     def handle_event(self, event, value):
         if event == AppState.EVENT_DEVICE:
@@ -154,7 +174,7 @@ class WaitInvoice(Mode):
             return barcode
 
         invoice = barcode[1:-1]
-        return invoice.strip("0")
+        return invoice.lstrip("0")
 
 
 class Tracking(Mode):
@@ -163,13 +183,25 @@ class Tracking(Mode):
 
         self.invoice = None
         self.order_info = None
-        self.start_time = time()
         self.is_connecting = False
+        self.is_paused = False
+        self.time = 0
+
+    def on_tick(self):
+        self.draw()
+        self.on_menu_tick()
+
+    def on_menu_tick(self):
+        if not self.is_paused:
+            self.time += 1
+
+    def pause(self, pause=None):
+        if pause is None:
+            pause = not self.is_paused
+
+        self.is_paused = pause
 
     def draw(self):
-        # Let this be refreshed automatically
-        self.app_state.start_timer()
-
         warning = ""
 
         warning += "S" if not self.app_state.has_scanner else " "
@@ -181,9 +213,7 @@ class Tracking(Mode):
         self.lcd.message("\n".join((line1, line2)))
 
     def get_time(self):
-        diff = time() - self.start_time
-
-        return "%d:%02d" % (floor(diff / 60), diff % 60)
+        return "%d:%02d" % (floor(self.time / 60), self.time % 60)
 
     def handle_event(self, event, value):
         if event == AppState.EVENT_DEVICE:
@@ -193,13 +223,16 @@ class Tracking(Mode):
             self.barcode_entered(value)
 
         elif event == AppState.EVENT_BUTTON:
-            self.app_state.switch_mode(Menu(self.app_state, self))
+            if value == self.lcd.SELECT:
+                self.pause()
+
+            else:
+                self.app_state.switch_mode(Menu(self.app_state, self))
 
     def barcode_entered(self, value):
-        pack_time = int(time() - self.start_time)
         self.app_state.call_ws_async(self.network_callback, "Packaging", "finishParcel", {
             "order": self.invoice,
-            "packTime": pack_time,
+            "packTime": self.time,
             "packer": self.app_state.packer_id,
             "machine": self.app_state.machine,
             })
@@ -220,10 +253,11 @@ class Menu(Mode):
         self.menu_builder = MenuBuilder(self.lcd)
         self.menu_builder.callback = self.callback
         self.menu_builder.options = list()
-        self.menu_builder.options.append(("logout", "Abmelden"))
 
-        if isinstance(self.previous_mode, Tracking):
+        if self.app_state.is_tracking():
             self.menu_builder.options.append(("abort", "Paket\nabbrechen"))
+
+        self.menu_builder.options.append(("logout", "Abmelden"))
 
         if self.app_state.machine is not None:
             if self.app_state.breakdown:
@@ -231,9 +265,11 @@ class Menu(Mode):
             else:
                 self.menu_builder.options.append(("breakdown", "Ausfall\nmelden"))
 
-        self.menu_builder.options.append(("quit", "Beenden"))
-        self.menu_builder.options.append(("shutdown", "Herunterfahren"))
         self.menu_builder.options.append(("show_ip", "IP-Adresse\nanzeigen"))
+        self.menu_builder.options.append(("shutdown", "Herunterfahren"))
+
+    def on_tick(self):
+        self.previous_mode.on_menu_tick()
 
     def callback(self, option):
         if option == "show_ip":
@@ -269,12 +305,10 @@ class Menu(Mode):
 
         if option == "breakdown":
             self.app_state.call_ws_async(None, "Packaging", "reportBreakdown", {"machine": self.app_state.machine})
-            self.app_state.breakdown = True
             return self.previous_mode
 
         if option == "repaired":
             self.app_state.call_ws_async(None, "Packaging", "repairedMachine", {"machine": self.app_state.machine})
-            self.app_state.breakdown = False
             return self.previous_mode
 
     def draw(self):

@@ -33,5 +33,6 @@ if __name__ == "__main__":
 
     import signal
     signal.signal(signal.SIGTERM, on_exit(director))
+    signal.signal(signal.SIGINT, on_exit(director))
 
     director.start()

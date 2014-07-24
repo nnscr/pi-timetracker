@@ -129,10 +129,7 @@ class TimerThread(Thread):
 
     def run(self):
         while self.app_state.is_active():
-            self.app_state.wait_timer()
-
-            while self.app_state.timer_running and self.app_state.is_active():
-                self.app_state.add_event(AppState.EVENT_REFRESH)
-                sleep(1)
+            self.app_state.add_event(AppState.EVENT_TICK)
+            sleep(1)
 
         print("Quitting timer thread")
