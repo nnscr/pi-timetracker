@@ -1,6 +1,6 @@
 from gaia.drivers.CharLCDPlate import CharLCDPlate
 from Queue import Queue, Empty
-from gaia.packingtracker.common import AppState
+from gaia.packingtracker.common import AppState, EventLoop
 from time import sleep
 from gaia.drivers.barcode_scanner import BarcodeScanner, NoDeviceFoundError
 from threading import Thread
@@ -16,14 +16,14 @@ class ButtonsThread(Thread):
         self.app_state = app_state
         self.lcd = lcd
 
+        self.event = self.app_state.loop.add(50).event
+
     def run(self):
-        while self.app_state.is_active():
+        while self.event.wait():
             button = self.lcd.read_buttons()
 
             if button is not None:
                 self.app_state.put((self.app_state.EVENT_BUTTON, button))
-
-            sleep(1 / 50)
 
         print("Quitting buttons thread")
 
@@ -42,6 +42,7 @@ class NetworkThread(Thread):
     def call_async(self, callback, extension, procedure, parameters):
         print("Adding new network request to stack")
         self.request_queue.put((callback, extension, procedure, parameters))
+        self.ws.interrupt()
 
     def run(self):
         while self.app_state.is_active():
@@ -74,8 +75,6 @@ class NetworkThread(Thread):
                 else:
                     callback = self.pending_requests.pop(msgid)
                     self.app_state.add_event(AppState.EVENT_NETWORK, (callback, payload))
-
-            sleep(0.1)
 
         print("Quitting network thread")
 
@@ -126,10 +125,15 @@ class TimerThread(Thread):
     def __init__(self, app_state):
         Thread.__init__(self, name="timer_thread")
         self.app_state = app_state
+        self.app_state.loop.add(1000, self.tick)
+        self.app_state.loop.add(500, self.flash_led)
+
+    def tick(self):
+        self.app_state.add_event(AppState.EVENT_TICK)
+
+    def flash_led(self):
+        self.app_state.leds.refresh()
 
     def run(self):
-        while self.app_state.is_active():
-            self.app_state.add_event(AppState.EVENT_TICK)
-            sleep(1)
-
+        self.app_state.loop.run()
         print("Quitting timer thread")

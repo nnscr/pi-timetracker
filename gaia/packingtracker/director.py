@@ -55,14 +55,17 @@ class Director(AppState):
         # Begin with packer selection
         self.switch_mode(SelectPacker(self))
 
-        while self.is_active():
+        loop = self.loop.add(50).event
+
+        while loop.wait():
             try:
                 event, value = self.get(block=False)
 
-                print("Event %s: %s" % (
-                    ANSI.color(ANSI.FG + ANSI.COL_RED, event),
-                    ANSI.color(ANSI.FG + ANSI.COL_GREEN, value))
-                )
+                if event != AppState.EVENT_TICK:
+                    print("Event %s: %s" % (
+                        ANSI.color(ANSI.FG + ANSI.COL_RED, event),
+                        ANSI.color(ANSI.FG + ANSI.COL_GREEN, value))
+                    )
 
                 if event == AppState.EVENT_FINISH:
                     # A mode has finished
@@ -74,8 +77,6 @@ class Director(AppState):
                     continue
 
                 if event == AppState.EVENT_TICK:
-                    self.webservice.interrupt()
-                    self.leds.refresh()
                     self.mode.on_tick()
 
                 if event == AppState.EVENT_REFRESH:
@@ -124,7 +125,7 @@ class Director(AppState):
                 self.mode.handle_event(event, value)
 
             except Queue.Empty:
-                sleep(1 / 50)
+                pass
 
     def stop(self, exit_=True):
         self.lcd.clear()
@@ -142,6 +143,8 @@ class Director(AppState):
 
         self.lcd.clear()
         self.lcd.backlight(self.lcd.OFF)
+
+        self.leds.reset()
 
         if exit_:
             exit()

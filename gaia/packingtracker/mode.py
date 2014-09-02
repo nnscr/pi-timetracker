@@ -10,7 +10,7 @@ class Mode(object):
         self.app_state = app_state
         self.lcd = app_state.lcd
 
-    def draw(self):
+    def draw(self, force=False):
         pass
 
     def handle_event(self, event, value):
@@ -46,7 +46,7 @@ class SelectPacker(Mode):
 
         self.is_connecting = False
 
-    def draw(self):
+    def draw(self, **kwargs):
         if self.is_connecting:
             self.lcd.message("Verbinde...")
         else:
@@ -128,7 +128,7 @@ class WaitInvoice(Mode):
 
         self.last_count = count
 
-    def draw(self):
+    def draw(self, **kwargs):
         self.lcd.message(self.messages[self.scroll_text_position])
 
     def handle_event(self, event, value):
@@ -164,7 +164,7 @@ class WaitInvoice(Mode):
 
         t = Tracking(self.app_state)
         t.invoice = invoice
-        t.order_info = order_info
+        t.order_info = order_info.encode("ascii", "replace")
 
         return t
 
@@ -187,21 +187,30 @@ class Tracking(Mode):
         self.is_paused = False
         self.time = 0
 
+    def on_enter(self, old_mode):
+        self.app_state.tracking = True
+
+    def on_exit(self, new_mode):
+        if not isinstance(new_mode, Menu):
+            self.app_state.tracking = False
+
     def on_tick(self):
         self.draw()
         self.on_menu_tick()
 
     def on_menu_tick(self):
-        if not self.is_paused:
+        if not self.app_state.tracking_paused:
             self.time += 1
 
     def pause(self, pause=None):
         if pause is None:
-            pause = not self.is_paused
+            pause = not self.app_state.tracking_paused
 
-        self.is_paused = pause
+        self.app_state.tracking_paused = pause
 
-    def draw(self):
+    _last_message = None
+
+    def draw(self, force=False):
         warning = ""
 
         warning += "S" if not self.app_state.has_scanner else " "
@@ -210,7 +219,11 @@ class Tracking(Mode):
         line1 = "{:<6}{:^4}{:>6}".format(self.get_time(), warning, self.invoice)
         line2 = self.order_info
 
-        self.lcd.message("\n".join((line1, line2)))
+        message = "\n".join((line1, line2))
+
+        if force or self._last_message != message:
+            self.lcd.message(message)
+            self._last_message = message
 
     def get_time(self):
         return "%d:%02d" % (floor(self.time / 60), self.time % 60)
@@ -268,6 +281,9 @@ class Menu(Mode):
         self.menu_builder.options.append(("show_ip", "IP-Adresse\nanzeigen"))
         self.menu_builder.options.append(("shutdown", "Herunterfahren"))
 
+    def on_exit(self, new_mode):
+        self.previous_mode.on_exit(new_mode)
+
     def on_tick(self):
         self.previous_mode.on_menu_tick()
 
@@ -311,7 +327,7 @@ class Menu(Mode):
             self.app_state.call_ws_async(None, "Packaging", "repairedMachine", {"machine": self.app_state.machine})
             return self.previous_mode
 
-    def draw(self):
+    def draw(self, **kwargs):
         self.menu_builder.draw()
 
     def handle_event(self, event, value):

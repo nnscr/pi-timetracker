@@ -7,23 +7,27 @@ from gaia.packingtracker.common import AppState
 GPIO.setmode(GPIO.BOARD)
 GPIO.setwarnings(False)
 
-GPIO.setup(AppState.LED_RED, GPIO.OUT)
-GPIO.setup(AppState.LED_YLW, GPIO.OUT)
-GPIO.setup(AppState.LED_GRN, GPIO.OUT)
+red = 11
+ylw = 13
+grn = 15
 
-for led in (AppState.LED_RED, AppState.LED_GRN, AppState.LED_YLW):
+GPIO.setup(red, GPIO.OUT)
+GPIO.setup(ylw, GPIO.OUT)
+GPIO.setup(grn, GPIO.OUT)
+
+for led in (red, grn, ylw):
     GPIO.output(led, False)
 
 sleep(0.75)
-GPIO.output(AppState.LED_RED, True)
+GPIO.output(red, True)
 sleep(0.75)
-GPIO.output(AppState.LED_YLW, True)
+GPIO.output(ylw, True)
 sleep(0.75)
-GPIO.output(AppState.LED_GRN, True)
+GPIO.output(grn, True)
 sleep(0.75)
 
-GPIO.output(AppState.LED_GRN, False)
-GPIO.output(AppState.LED_YLW, False)
+GPIO.output(grn, False)
+GPIO.output(ylw, False)
 
 # Leave the power led turned on until shutdown where it is automatically powered off.
 # GPIO.output(AppState.LED_RED, True)

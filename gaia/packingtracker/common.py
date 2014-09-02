@@ -1,6 +1,7 @@
 from Queue import Queue
-from threading import Event
+from threading import Event, _Event
 from RPi import GPIO
+from time import sleep
 
 
 class ANSI():
@@ -46,6 +47,9 @@ class AppState(Queue):
     def __init__(self, lcd):
         Queue.__init__(self)
 
+        # Main event loop
+        self.loop = EventLoop(self.is_active)
+
         # The quit event is set if the child threads are prompted to exit
         self.quit_event = Event()
 
@@ -63,6 +67,10 @@ class AppState(Queue):
         # Static values from configuration file
         self.terminal = None
         self.machine = None
+
+        # Tracking?
+        self.tracking = False
+        self.tracking_paused = False
 
         # Current LED states for flashing
         self.leds = LEDManager(leds=(
@@ -85,13 +93,125 @@ class AppState(Queue):
 
     def shutdown(self):
         self.quit_event.set()
+        self.loop.stop()
 
     def set_packer(self, packer_id, packer_name):
         self.packer_id = packer_id
         self.packer_name = packer_name
 
-    def is_tracking(self):
-        pass
+
+class EventLoop(object):
+    class Item(object):
+        def __init__(self, loop, interval, event=None, callback=None):
+            assert event is not None or callback is not None
+
+            self._loop = loop
+            self._interval = interval
+            self._event = event
+            self._callback = callback
+
+        def notify(self):
+            if self._event is not None:
+                self._event.notify()
+
+            else:
+                self._callback()
+
+        def release(self):
+            if self._event is not None:
+                self._event.notify()
+
+        @property
+        def interval(self):
+            return self._interval
+
+        @property
+        def event(self):
+            return self._event
+
+    class Event(object):
+        def __init__(self, cond):
+            self._event = Event()
+            self._cond = cond
+
+        def wait(self):
+            self._event.wait()
+            self._event.clear()
+
+            return self._cond()
+
+        def notify(self):
+            self._event.set()
+
+    def __init__(self, cond):
+        self._freq = None
+        self._reset = None
+        self._clock = 0
+        self._events = list()
+        self._cond = cond
+
+    def add(self, interval, callback=None):
+        assert interval > 0
+
+        if callback is None:
+            event = self.Event(self._cond)
+            item = self.Item(self, interval, event=event)
+
+        else:
+            item = self.Item(self, interval, callback=callback)
+
+        self._events.append(item)
+        self._calculate_clock()
+
+        return item
+
+    def remove(self, callback):
+        self._events.remove(callback)
+        self._calculate_clock()
+
+    def run(self):
+        if self._freq is None:
+            raise RuntimeError("Frequency not set, did you forget to add an event?")
+
+        while self._cond():
+            self._clock += 1
+
+            cur = self._clock * self._freq
+
+            for ev in self._events:
+                if cur % ev.interval == 0:
+                    ev.notify()
+
+            if cur == self._reset:
+                self._clock = 0
+
+            sleep(self._freq / 1000.0)
+
+    def stop(self):
+        for item in self._events:
+            item.release()
+
+    def _calculate_clock(self):
+        def gcd(*numbers):
+            """Return the greatest common divisor of the given integers"""
+            from fractions import gcd as gcd_
+            return reduce(gcd_, numbers)
+
+        def lcm(*numbers):
+            """Return lowest common multiple."""
+            def lcm_(a, b):
+                return (a * b) // gcd(a, b)
+
+            return reduce(lcm_, numbers, 1)
+
+        intervals = [c.interval for c in self._events]
+
+        print ("Intervals:", intervals)
+
+        self._freq = gcd(*intervals)
+        self._reset = lcm(*intervals)
+
+        print "Calculated frequency: %f, reset at %f (%f)" % (self._freq, self._reset, (self._reset / self._freq))
 
 
 class LED(object):
@@ -119,6 +239,9 @@ class LED(object):
     def _set_level(self, level):
         GPIO.output(self.pin, level)
 
+    def reset(self):
+        self._set_level(self.behaviour.reset())
+
 
 class LEDManager(object):
     def __init__(self, leds):
@@ -135,6 +258,10 @@ class LEDManager(object):
         for led in self.leds:
             led.refresh()
 
+    def reset(self):
+        for led in self.leds:
+            led.reset()
+
 
 class LEDBehaviour(object):
     def __init__(self, app_state):
@@ -143,9 +270,15 @@ class LEDBehaviour(object):
     def get_mode(self):
         pass
 
+    def reset(self):
+        pass
+
 
 class PowerLEDBehaviour(LEDBehaviour):
     def get_mode(self):
+        return LED.ON
+
+    def reset(self):
         return LED.ON
 
 
@@ -156,13 +289,19 @@ class MaintenanceLEDBehaviour(LEDBehaviour):
         else:
             return LED.OFF
 
+    def reset(self):
+        return LED.OFF
+
 
 class TrackingLEDBehaviour(LEDBehaviour):
     def get_mode(self):
-        if self.app.is_tracking():
-            if self.app.mode.is_paused:
+        if self.app.tracking:
+            if self.app.tracking_paused:
                 return LED.FLASH
             else:
                 return LED.ON
         else:
             return LED.OFF
+
+    def reset(self):
+        return LED.OFF

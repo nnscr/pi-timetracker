@@ -90,8 +90,8 @@ class PackingTimeTracker(object):
     def add_event(self, event):
         self.lock.acquire()
         self.event_stack.append(event)
-        self.semaphore.release()
-        self.lock.release()
+        self.semaphore.stop()
+        self.lock.stop()
 
     def search_scanner(self):
         """ Called from the scanner thread, this will keep searching for a barcode scanner until it is found. """
@@ -163,7 +163,7 @@ class PackingTimeTracker(object):
                         self.quit()
 
                     self.event_stack.remove(event)
-                self.lock.release()
+                self.lock.stop()
 
     def barcode_scanner_plugged(self):
         if self.mode not in (self.MODE_MENU, self.MODE_SELECT_PACKER):
